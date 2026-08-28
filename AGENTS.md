@@ -1,6 +1,6 @@
 # agents.md 开发指引
 
-本文件供 AI 助手 / 开发者在 memos-plugin-bangumi 仓库工作时参考。
+本文件供 AI 助手 / 开发者在 bangumi2memos 仓库工作时参考。
 
 ## 项目概述
 
@@ -17,7 +17,7 @@ Python ≥ 3.11（`tomllib` 3.11 才进入标准库）。不需要任何工具�
 
 ## 目录结构
 
-- `memos-plugin-bangumi.py`  全部代码（含文件头 GPL 版权声明）
+- `bangumi2memos.py`  全部代码（含文件头 GPL 版权声明）
 - `config.example.toml`      配置模板
 - `.github/workflows/sync.yml` 每 6 小时在 GitHub runner 上跑一次 API 模式同步
   （需 memos 公网可达；凭据走 Secrets；`state.json` 走 Actions cache 不进仓库，支持
@@ -62,13 +62,13 @@ Python ≥ 3.11（`tomllib` 3.11 才进入标准库）。不需要任何工具�
 
 ```sh
 # 语法检查
-python3 -m py_compile memos-plugin-bangumi.py
+python3 -m py_compile bangumi2memos.py
 
 # 帮助
-python3 memos-plugin-bangumi.py --help
+python3 bangumi2memos.py --help
 
 # dry-run 预览（不写入 memos，不保存状态）
-python3 memos-plugin-bangumi.py --bangumi-username sai --dry-run
+python3 bangumi2memos.py --bangumi-username sai --dry-run
 
 # API 模式端到端：本地起一个测试 memos（--data 临时目录、--port 5230）并建用户，
 # 真实导入一次，再次运行确认幂等跳过，并抽查 memo 的 uid / createTime / content。

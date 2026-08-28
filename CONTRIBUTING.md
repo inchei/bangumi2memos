@@ -1,6 +1,6 @@
 # 贡献指南
 
-欢迎为 memos-plugin-bangumi 贡献代码、文档与 issue。项目以 [GPL-3.0-or-later](LICENSE) 许可发布。
+欢迎为 bangumi2memos 贡献代码、文档与 issue。项目以 [GPL-3.0-or-later](LICENSE) 许可发布。
 
 ## 开发环境
 
@@ -11,9 +11,9 @@
 ## 常用命令
 
 ```sh
-python3 -m py_compile memos-plugin-bangumi.py   # 语法检查
-python3 memos-plugin-bangumi.py --help          # 参数一览
-python3 memos-plugin-bangumi.py --bangumi-username sai --dry-run   # 预览
+python3 -m py_compile bangumi2memos.py   # 语法检查
+python3 bangumi2memos.py --help          # 参数一览
+python3 bangumi2memos.py --bangumi-username sai --dry-run   # 预览
 ```
 
 ## 代码约定
@@ -28,7 +28,7 @@ python3 memos-plugin-bangumi.py --bangumi-username sai --dry-run   # 预览
 ## 提交流程
 
 1. 从 `main` 新建分支：`git checkout -b fix/short-description`
-2. 修改并自检（`python3 -m py_compile memos-plugin-bangumi.py` + dry-run + 真实导入）
+2. 修改并自检（`python3 -m py_compile bangumi2memos.py` + dry-run + 真实导入）
 3. 提交（改动前已按上步自检）
 4. 推送并创建 Pull Request，描述改动动机与验证结果
 
@@ -39,5 +39,5 @@ python3 memos-plugin-bangumi.py --bangumi-username sai --dry-run   # 预览
 
 ## 许可证
 
-新增文件请保留文件头的 `Copyright (C) 2026 memos-plugin-bangumi contributors` 与
+新增文件请保留文件头的 `Copyright (C) 2026 bangumi2memos contributors` 与
 `SPDX-License-Identifier: GPL-3.0-or-later` 两行。整个项目以 GPL-3.0-or-later 发布。

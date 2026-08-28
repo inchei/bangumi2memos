@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="logo.png" width="120" alt="memos-plugin-bangumi">
+  <img src="logo.png" width="120" alt="bangumi2memos">
 </p>
 
-# memos-plugin-bangumi
+# bangumi2memos
 
 ![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB)
 [![Memos](https://img.shields.io/badge/Memos-%E2%89%A50.26.0-1E6D51)](https://github.com/usememos/memos)
@@ -35,14 +35,14 @@ memo 为纯文字，正文含条目名、完成态文案、短评和 Bangumi 链
 memos >= 0.30（登录换取短期 token）：
 
 ```sh
-python3 memos-plugin-bangumi.py --bangumi-username sai \
+python3 bangumi2memos.py --bangumi-username sai \
     --api http://localhost:5230 --user admin --password '你的密码'
 ```
 
  0.26.0 ≤ memos < 0.30（使用账号里的 Access Token）：
 
 ```sh
-python3 memos-plugin-bangumi.py --bangumi-username sai \
+python3 bangumi2memos.py --bangumi-username sai \
     --api http://localhost:5230 --token 'AccessToken'
 ```
 
@@ -51,7 +51,7 @@ python3 memos-plugin-bangumi.py --bangumi-username sai \
 需停止当前 memos，写完后重启。
 
 ```sh
-python3 memos-plugin-bangumi.py --bangumi-username sai --db ~/.memos/memos.db --user admin
+python3 bangumi2memos.py --bangumi-username sai --db ~/.memos/memos.db --user admin
 ```
 
 ## 同步
@@ -60,7 +60,7 @@ python3 memos-plugin-bangumi.py --bangumi-username sai --db ~/.memos/memos.db --
 
 ```sh
 # 每 30 分钟同步一次
-*/30 * * * * cd /path/to/memos-plugin-bangumi && python3 memos-plugin-bangumi.py --config config.toml >> sync.log 2>&1
+*/30 * * * * cd /path/to/bangumi2memos && python3 bangumi2memos.py --config config.toml >> sync.log 2>&1
 ```
 
 ### GitHub Actions
@@ -94,7 +94,7 @@ fork 本仓库，参考 [sync.yml](.github/workflows/sync.yml) 每 6 小时在 G
 删除 uid 以 `bgm-` 开头（即本工具导入）的 memo，并重置增量状态文件，增加 `--delete` 参数即可，例：
 
 ```sh
-python3 memos-plugin-bangumi.py --delete --api http://localhost:5230 --user admin --password '你的密码'
+python3 bangumi2memos.py --delete --api http://localhost:5230 --user admin --password '你的密码'
 ```
 
 ## 配置文件

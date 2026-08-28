@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Copyright (C) 2026 memos-plugin-bangumi contributors
+# Copyright (C) 2026 bangumi2memos contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""memos-plugin-bangumi - 将 Bangumi 用户「看过/玩过/读过/听过」且带短评的收藏导入 Memos。
+"""bangumi2memos - 将 Bangumi 用户「看过/玩过/读过/听过」且带短评的收藏导入 Memos。
 
 纯文字 memo，正文含条目名、完成态文案、短评与 Bangumi 链接。
 按 memo uid（bgm-{subject_id}）幂等，重复运行不产生重复 memo；
@@ -16,8 +16,8 @@
 Python 的 ssl 走系统 OpenSSL 根库、DNS 走 libc getaddrinfo，Termux 等环境开箱即用。
 
 用法示例：
-  python3 memos-plugin-bangumi.py --bangumi-username sai --api http://localhost:5230 --password '***'
-  python3 memos-plugin-bangumi.py --config config.toml --dry-run
+  python3 bangumi2memos.py --bangumi-username sai --api http://localhost:5230 --password '***'
+  python3 bangumi2memos.py --config config.toml --dry-run
 """
 
 import argparse
@@ -40,7 +40,7 @@ except ImportError:
     raise
 
 def default_ua():
-    return "memos-plugin-bangumi (https://github.com/inchei/memos-plugin-bangumi)"
+    return "bangumi2memos (https://github.com/inchei/bangumi2memos)"
 
 
 DEFAULT_BANGUMI_BASE = "https://api.bgm.tv"
@@ -136,7 +136,7 @@ def parse_subject_types(s):
 
 def build_parser(cfg):
     p = argparse.ArgumentParser(
-        prog="memos-plugin-bangumi",
+        prog="bangumi2memos",
         description="把 Bangumi 用户「看过/玩过/读过/听过」且带短评的收藏导入 Memos。",
         epilog="配置文件键名 = 选项名去掉 --（- 可写作 _），如 bangumi_username。",
     )

@@ -1,4 +1,4 @@
-# memos-plugin-bangumi 配置模板
+# bangumi2memos 配置模板
 # 复制为当前目录下的 config.toml 即可——程序默认读取当前路径下的 config.toml
 # （不存在则跳过），所有项也可用命令行参数覆盖（命令行优先）。
 # 各键所示值即程序默认值；未注释的必填项请按需填写。
@@ -8,7 +8,7 @@ bangumi_username = ""                 # Bangumi 用户名或 UID（必填，无�
 # bangumi_base = "https://api.bgm.tv"
 # bangumi_ip = ""                     # 直连 IP，绕过 DNS（域名与 TLS 校验不变；仅网络 DNS
 #                                     # 异常时使用，Termux 等环境一般无需设置，IP 可用 ping 获取）
-# user_agent = "memos-plugin-bangumi (https://github.com/inchei/memos-plugin-bangumi)"
+# user_agent = "bangumi2memos (https://github.com/inchei/bangumi2memos)"
 # link_base = "https://bgm.tv"        # memo 正文的条目链接域名，如 "https://fxbgm.tv"
 
 # ---------- Memos 写入 ----------
