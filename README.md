@@ -50,8 +50,6 @@ python3 bangumi2memos.py --bangumi-username sai \
 
 ### 方式二：直写数据库
 
-需停止当前 memos，写完后重启。
-
 ```sh
 python3 bangumi2memos.py --bangumi-username sai --db ~/.memos/memos.db --user admin
 ```
@@ -83,7 +81,7 @@ fork 本仓库，参考 [sync.yml](.github/workflows/sync.yml) 每 6 小时在 G
 | --- | --- | --- |
 | `BANGUMI_USERNAME` | Secret | Bangumi 用户名（必填） |
 | `MEMOS_API` | Secret | memos 地址，如 `https://memos.example.com`（必填） |
-| `MEMOS_PASSWORD` | Secret | memos 密码（memos ≥ 0.30，推荐） |
+| `MEMOS_PASSWORD` | Secret | memos 密码（memos ≥ 0.30） |
 | `MEMOS_USER` | Secret | memos 登录用户名（配合密码） |
 | `MEMOS_TOKEN` | Secret | 或 memos < 0.30 的 Access Token（替代密码） |
 | `MEMOS_VISIBILITY` | Secret / Variable | memo 可见性：`private` / `protected` / `public`（可选，默认 `private`；可用 Variables，更语义化） |
@@ -114,7 +112,6 @@ python3 bangumi2memos.py --delete --api http://localhost:5230 --user admin --pas
 - 短评需为**公开收藏**（API 无鉴权时读不到私有收藏）
 - Bangumi 存在 bug：修改评分/短评可能不更新 `updated_at`，此类「旧条目补短评」增量会漏，
   可定期用 `--full` 补扫
-- 直写数据库前请停止 memos，否则可能 `database is locked`
 - 标签默认同时写入正文与显式标签字段（双写确保标签生效），Memos 前端编辑时会按正文重新提取标签；若用 `--no-tag-in-content` 关闭正文追加，仅显式传入标签（API: `tags`，直写库: `payload.tags`），再次编辑后会丢失
 - 需设置规范的 User-Agent（默认值见 `config.example.toml`，可覆盖）
 

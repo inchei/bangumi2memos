@@ -8,9 +8,9 @@
 默认增量同步（状态文件记录最新 updated_at，提前停止处理更旧条目），--full 强制全量。
 
 两种写入方式：
-  1. API 模式（--api，memos 运行中，推荐）：memos >= 0.30 用 --password 登录换取短期 token，
+  1. API 模式（--api，memos 运行中）：memos >= 0.30 用 --password 登录换取短期 token，
      < 0.30 用 --token（Access Token）；请求体带 createTime 保留 Bangumi 时间
-  2. 直写数据库（--db，需先停止 memos）：直接插入 memo 表，保留时间
+  2. 直写数据库（--db）：直接插入 memo 表，保留时间
 
 仅用 Python 标准库（urllib / tomllib / sqlite3），无需安装任何依赖；
 Python 的 ssl 走系统 OpenSSL 根库、DNS 走 libc getaddrinfo，Termux 等环境开箱即用。
