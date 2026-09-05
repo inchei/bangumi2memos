@@ -509,6 +509,8 @@ def sync(cfg):
 
     created = skipped = total = 0
     max_ts = 0
+    success_max_ts = state["last_updated_ts"]
+    has_error = False
     try:
         for c in collections:
             total += 1
@@ -522,10 +524,14 @@ def sync(cfg):
             if incremental and ts <= state["last_updated_ts"]:
                 break
             if not (c.get("comment") or "").strip():
+                if ts > success_max_ts:
+                    success_max_ts = ts
                 continue
             sid = (c.get("subject") or {}).get("id", 0)
             if not sid or sid <= 0:
                 print("  跳过条目 id 无效的收藏（name={}）".format(subject_name(c)))
+                if ts > success_max_ts:
+                    success_max_ts = ts
                 continue
             uid = "bgm-{}".format(sid)
             content = build_content(c, link_base)
@@ -534,9 +540,13 @@ def sync(cfg):
                     content += "\n#" + cfg.get("tag")
                 print("  [dry-run] {}\n{}\n".format(uid, content))
                 created += 1
+                if ts > success_max_ts:
+                    success_max_ts = ts
                 continue
             if uid in existing:
                 skipped += 1
+                if ts > success_max_ts:
+                    success_max_ts = ts
                 continue
             try:
                 ok = writer.create(uid, content, visibility_value(cfg.get("visibility")),
@@ -544,6 +554,7 @@ def sync(cfg):
                                    cfg.get("tag_in_content", True))
             except Exception as e:
                 print("  创建 {} 失败：{}".format(uid, e))
+                has_error = True
                 continue
             if ok:
                 if cfg.get("verbose"):
@@ -551,16 +562,20 @@ def sync(cfg):
                 created += 1
             else:
                 skipped += 1
+            if ts > success_max_ts:
+                success_max_ts = ts
     finally:
         if close_after:
             writer.close()
 
-    if not cfg.get("dry_run") and max_ts > 0:
-        state["last_updated_ts"] = max_ts
+    if not cfg.get("dry_run") and not has_error and success_max_ts > state["last_updated_ts"]:
+        state["last_updated_ts"] = success_max_ts
         try:
             save_state(cfg.get("state") or "", state)
         except OSError as e:
             die("保存状态文件失败：{}".format(e))
+    elif has_error:
+        print("本次同步存在 memos 写入失败，未更新增量状态文件（下次将重试）")
 
     action = "dry-run 待创建" if cfg.get("dry_run") else "创建"
     print("\n完成：扫描 {} 条收藏，{} {} 条，跳过 {} 条".format(total, action, created, skipped))
