@@ -25,6 +25,8 @@ memo 为纯文字，正文含条目名、完成态文案、短评和 Bangumi 链
   链接域名可用 `--link-base` 换成其它镜像）
 - 每条 memo 以 `uid = bgm-{subject_id}` 幂等，重复运行不产生重复 memo
 - 时间用收藏的 `updated_at`（+08:00）写入 `createTime`/`created_ts`，保留原始时间
+- 标签 `--tag` 默认以 `#tag` 追加到正文并同时显式传入（API: `tags`，直写库: `payload.tags`，双写确保标签生效）；
+  可用 `--no-tag-in-content` 关闭正文追加，此时仅显式传入标签，正文不含 `#tag`，编辑 memo 后标签会丢失
 - 列表按 `updated_at` 降序返回，状态文件记录最新 `updated_at`，下次运行提前停止处理更旧条目；
   `--full` 强制全量
 
@@ -75,15 +77,19 @@ python3 bangumi2memos.py --bangumi-username sai --db ~/.memos/memos.db --user ad
 
 fork 本仓库，参考 [sync.yml](.github/workflows/sync.yml) 每 6 小时在 GitHub runner 上自动跑一次 API 模式同步。
 
-配置仓库 Secrets（Settings → Secrets and variables → Actions）：
+配置仓库 Secrets / Variables（Settings → Secrets and variables → Actions）：
 
-| Secret | 说明 |
-| --- | --- |
-| `BANGUMI_USERNAME` | Bangumi 用户名（必填） |
-| `MEMOS_API` | memos 地址，如 `https://memos.example.com`（必填） |
-| `MEMOS_PASSWORD` | memos 密码（memos ≥ 0.30，推荐） |
-| `MEMOS_USER` | memos 登录用户名（配合密码） |
-| `MEMOS_TOKEN` | 或 memos < 0.30 的 Access Token（替代密码） |
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `BANGUMI_USERNAME` | Secret | Bangumi 用户名（必填） |
+| `MEMOS_API` | Secret | memos 地址，如 `https://memos.example.com`（必填） |
+| `MEMOS_PASSWORD` | Secret | memos 密码（memos ≥ 0.30，推荐） |
+| `MEMOS_USER` | Secret | memos 登录用户名（配合密码） |
+| `MEMOS_TOKEN` | Secret | 或 memos < 0.30 的 Access Token（替代密码） |
+| `MEMOS_VISIBILITY` | Secret / Variable | memo 可见性：`private` / `protected` / `public`（可选，默认 `private`；可用 Variables，更语义化） |
+| `MEMOS_TAG` | Secret / Variable | 附加标签（可选，空 = 不加；如 `bangumi` 则默认正文追加 `#bangumi`，`--no-tag-in-content` 可关闭） |
+
+`MEMOS_VISIBILITY` / `MEMOS_TAG` 同时对定时任务（`schedule`）与手动触发（`workflow_dispatch`）生效（Secrets 优先于 Variables，未配置则默认 `private` / 不加标签）。
 
 可在首次本地全量导入后，用
 **workflow_dispatch** 手动触发一次，在 `watermark` 输入框填本地 `state.json` 的
@@ -109,6 +115,7 @@ python3 bangumi2memos.py --delete --api http://localhost:5230 --user admin --pas
 - Bangumi 存在 bug：修改评分/短评可能不更新 `updated_at`，此类「旧条目补短评」增量会漏，
   可定期用 `--full` 补扫
 - 直写数据库前请停止 memos，否则可能 `database is locked`
+- 标签默认同时写入正文与显式标签字段（双写确保标签生效），Memos 前端编辑时会按正文重新提取标签；若用 `--no-tag-in-content` 关闭正文追加，仅显式传入标签（API: `tags`，直写库: `payload.tags`），再次编辑后会丢失
 - 需设置规范的 User-Agent（默认值见 `config.example.toml`，可覆盖）
 
 ## 许可证

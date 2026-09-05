@@ -55,7 +55,7 @@ Python ≥ 3.11（`tomllib` 3.11 才进入标准库）。不需要任何工具�
   `--dry-run` 不读/写 memos，也不保存状态；GitHub Actions 模式的 `state.json` 走 cache 不进仓库，
   首次可用 sync.yml 的 `watermark` 输入播种，此后每次跑完自动存回
 - API 模式幂等：`memoId` 重复时 memos 返回 `code=6`（ALREADY_EXISTS）视为跳过
-- API 模式 `tag` 以 `#tag` 拼入正文（memos 标签从正文 hashtag 提取）；直写库写 `payload.tags`
+- `tag` 默认以 `#tag` 拼入正文并同时显式传入（API: `tags`，直写库: `payload.tags`，双写确保标签生效）；`--no-tag-in-content` 关闭后仅显式传入标签，正文不含 `#tag`，编辑后标签会丢失
 - 直写库要求库已由 memos 初始化（有 `user` 表且存在用户），导入前 memos 必须停止
 
 ## 验证

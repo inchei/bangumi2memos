@@ -23,7 +23,8 @@ bangumi_username = ""                 # Bangumi 用户名或 UID（必填，无�
 
 # ---------- 可选 ----------
 # visibility = "private"              # private / protected / public
-# tag = ""                            # 附加标签，空 = 不加
+# tag = ""                            # 附加标签，空 = 不加；默认以 #tag 追加到正文并显式传入
+# tag_in_content = true               # 是否将标签追加到正文（默认 true，同时显式传入）；设为 false 则仅显式传入标签（API: tags，直写库: payload.tags），正文不含 #tag，编辑 memo 后标签会丢失
 # subject_types = []                  # 空 = 全部；例如 [2, 4] 只导入动画与游戏
 
 # ---------- 同步 ----------

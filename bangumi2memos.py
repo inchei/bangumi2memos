@@ -82,6 +82,7 @@ DEFAULTS = {
     "user": DEFAULT_USER,
     "visibility": DEFAULT_VISIBILITY,
     "tag": "",
+    "tag_in_content": True,
     "subject_types": [],
     "dry_run": False,
     "full": False,
@@ -152,7 +153,8 @@ def build_parser(cfg):
     p.add_argument("--db", default=cfg["db"], help="Memos sqlite 数据库路径（直写模式）")
     p.add_argument("--user", default=cfg["user"], help="Memos 用户名（直写模式必填；API 模式用于登录/过滤）")
     p.add_argument("--visibility", default=cfg["visibility"], help="memo 可见性：private/protected/public")
-    p.add_argument("--tag", default=cfg["tag"], help="附加标签（API 模式拼 #tag 到正文，直写模式写入 payload）")
+    p.add_argument("--tag", default=cfg["tag"], help="附加标签（默认以 #tag 追加到正文并显式传入；--no-tag-in-content 后仅显式传入标签）")
+    p.add_argument("--tag-in-content", dest="tag_in_content", action=argparse.BooleanOptionalAction, default=cfg["tag_in_content"], help="是否将标签以 #tag 追加到正文（默认追加并显式传入；关闭后仅显式传入，正文不含 #tag，编辑 memo 会丢失标签）")
     p.add_argument("--subject-types", dest="subject_types", type=parse_subject_types, default=cfg["subject_types"],
                    help="要导入的条目类型，逗号分隔：1书籍/2动画/3音乐/4游戏/6三次元（空=全部）")
     p.add_argument("--dry-run", dest="dry_run", action="store_true", default=cfg["dry_run"], help="只预览不写入")
@@ -351,10 +353,12 @@ class APIWriter:
     def list_bangumi_owned(self):
         return sorted(u for u in self.list_existing_uids() if u.startswith("bgm-"))
 
-    def create(self, uid, content, visibility, create_time, ts, tag):
-        if tag:
+    def create(self, uid, content, visibility, create_time, ts, tag, tag_in_content=True):
+        if tag and tag_in_content:
             content += "\n#" + tag
         payload = {"content": content, "visibility": visibility}
+        if tag:
+            payload["tags"] = [tag]
         if create_time:
             payload["createTime"] = create_time
         code, body = self._request("POST", "/api/v1/memos", {"memoId": uid}, payload)
@@ -420,10 +424,12 @@ class DBWriter:
             (self.user_id,)).fetchall()
         return [r[0] for r in rows]
 
-    def create(self, uid, content, visibility, create_time, ts, tag):
+    def create(self, uid, content, visibility, create_time, ts, tag, tag_in_content=True):
         exists = self.conn.execute("SELECT COUNT(1) FROM memo WHERE uid = ?", (uid,)).fetchone()[0]
         if exists > 0:
             return False
+        if tag and tag_in_content:
+            content += "\n#" + tag
         payload = {}
         if tag:
             payload["tags"] = [tag]
@@ -524,6 +530,8 @@ def sync(cfg):
             uid = "bgm-{}".format(sid)
             content = build_content(c, link_base)
             if cfg.get("dry_run"):
+                if cfg.get("tag") and cfg.get("tag_in_content"):
+                    content += "\n#" + cfg.get("tag")
                 print("  [dry-run] {}\n{}\n".format(uid, content))
                 created += 1
                 continue
@@ -532,7 +540,8 @@ def sync(cfg):
                 continue
             try:
                 ok = writer.create(uid, content, visibility_value(cfg.get("visibility")),
-                                   c.get("updated_at") or "", ts, cfg.get("tag") or "")
+                                   c.get("updated_at") or "", ts, cfg.get("tag") or "",
+                                   cfg.get("tag_in_content", True))
             except Exception as e:
                 print("  创建 {} 失败：{}".format(uid, e))
                 continue
