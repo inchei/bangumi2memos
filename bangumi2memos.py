@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """bangumi2memos - 将 Bangumi 用户「看过/玩过/读过/听过」且带短评的收藏导入 Memos。
 
-纯文字 memo，正文含条目名、完成态文案、短评与 Bangumi 链接。
+纯文字 memo，正文含条目名、完成态文案、短评与 Bangumi 链接（可配置转为 NeoDB 链接）。
 按 memo uid（bgm-{subject_id}）幂等，重复运行不产生重复 memo；
 默认增量同步（状态文件记录最新 updated_at，提前停止处理更旧条目），--full 强制全量。
 
@@ -12,12 +12,19 @@
      < 0.30 用 --token（Access Token）；请求体带 createTime 保留 Bangumi 时间
   2. 直写数据库（--db）：直接插入 memo 表，保留时间
 
+NeoDB 转换（--neodb）：
+  调用 {neodb_base}/api/catalog/fetch?url=https://bgm.tv/subject/{id}
+  参考 https://neodb.social/api/openapi.json 的 catalog_apis_fetch_item：
+  302 已抓取、202 抓取中（等待 15 秒后重试一次，部分站点需 ~90 秒）、429 限流；
+  首次 202 后重试一次仍未完成则退回 Bangumi 原链接，下次同步将再次尝试。
+
 仅用 Python 标准库（urllib / tomllib / sqlite3），无需安装任何依赖；
 Python 的 ssl 走系统 OpenSSL 根库、DNS 走 libc getaddrinfo，Termux 等环境开箱即用。
 
 用法示例：
   python3 bangumi2memos.py --bangumi-username sai --api http://localhost:5230 --password '***'
   python3 bangumi2memos.py --config config.toml --dry-run
+  python3 bangumi2memos.py --bangumi-username sai --api http://localhost:5230 --password '***' --neodb
 """
 
 import argparse
@@ -52,6 +59,7 @@ DEFAULT_STATE = "state.json"
 DEFAULT_TIMEOUT = 30
 DEFAULT_LIMIT = 100
 DEFAULT_LINK_BASE = "https://bgm.tv"
+DEFAULT_NEODB_BASE = "https://neodb.social"
 
 VIS_PRIVATE = "PRIVATE"
 VIS_PROTECTED = "PROTECTED"
@@ -75,6 +83,8 @@ DEFAULTS = {
     "bangumi_ip": "",
     "user_agent": "",
     "link_base": DEFAULT_LINK_BASE,
+    "neodb": False,
+    "neodb_base": DEFAULT_NEODB_BASE,
     "api": "",
     "token": "",
     "password": "",
@@ -146,6 +156,8 @@ def build_parser(cfg):
     p.add_argument("--bangumi-base", dest="bangumi_base", default=cfg["bangumi_base"], help="Bangumi API 地址")
     p.add_argument("--bangumi-ip", dest="bangumi_ip", default=cfg["bangumi_ip"], help="Bangumi 直连 IP（绕过 DNS，TLS 域名不变；DNS 异常环境使用）")
     p.add_argument("--link-base", dest="link_base", default=cfg["link_base"], help="memo 正文的条目链接域名（如 https://fxbgm.tv）")
+    p.add_argument("--neodb", dest="neodb", action=argparse.BooleanOptionalAction, default=cfg["neodb"], help="将 Bangumi 链接转换为 NeoDB 链接显示（调用 NeoDB 的 /api/catalog/fetch）")
+    p.add_argument("--neodb-base", dest="neodb_base", default=cfg["neodb_base"], help="NeoDB 实例地址（默认 https://neodb.social，需配合 --neodb 使用）")
     p.add_argument("--user-agent", dest="user_agent", default=cfg["user_agent"], help="请求 Bangumi 使用的 User-Agent")
     p.add_argument("--api", default=cfg["api"], help="Memos API 地址（设置则用 API 模式）")
     p.add_argument("--token", default=cfg["token"], help="直接使用的 Bearer token（memos < 0.30 的 Access Token）")
@@ -177,11 +189,114 @@ def subject_name(c):
     return name_cn if name_cn else (s.get("name") or "")
 
 
-def build_content(c, link_base):
+def build_content(c, link_base, neodb_url=None):
     s = c.get("subject", {})
-    return "{0}《{1}》：{2}\n\n{3}/subject/{4}".format(
+    link = neodb_url if neodb_url else "{0}/subject/{1}".format(link_base.rstrip("/"), s.get("id"))
+    return "{0}《{1}》：{2}\n\n{3}".format(
         status_label(s.get("type", 0)), subject_name(c), c.get("comment", ""),
-        link_base.rstrip("/"), s.get("id"))
+        link)
+
+
+def fetch_neodb_url(subject_id, neodb_base, timeout, ua, verbose=False):
+    """调用 NeoDB /api/catalog/fetch 将 bgm 链接转换为 NeoDB 链接。
+
+    参考 neodb 文档 /api/catalog/fetch：
+      302 已有条目（返回 {url: /api/...}，urllib 跟随后为 200 的条目 JSON）
+      202 正在抓取，需等待 15 秒以上后重试；部分站点需 ~90 秒
+      429 频繁请求；404/422 不支持或无条目
+    首次 202 后等待 15 秒重试一次，若仍未完成则退回原链接（NeoDB 后台仍在抓取，
+    下次同步即可命中）；429 采用指数退避，最多等待 120 秒。
+    """
+    bgm_url = "https://bgm.tv/subject/{0}".format(subject_id)
+    fetch_url = "{0}/api/catalog/fetch?url={1}".format(
+        neodb_base.rstrip("/"), urllib.parse.quote(bgm_url, safe=""))
+    headers = {"Accept": "application/json", "User-Agent": ua}
+    deadline = 120
+    start = time.monotonic()
+    attempt = 0
+    while True:
+        elapsed = time.monotonic() - start
+        if elapsed >= deadline:
+            if verbose:
+                print("  NeoDB 转换超时（{}）：{} 仍未完成，退回 Bangumi 链接".format(subject_id, bgm_url))
+            return None
+        try:
+            code, body = http_req(fetch_url, headers=headers, timeout=timeout)
+        except RuntimeError as e:
+            if verbose:
+                print("  NeoDB 请求失败（{}）：{}，退回 Bangumi 链接".format(subject_id, e))
+            return None
+        # 200: 已跟随重定向拿到条目 JSON
+        if code == 200:
+            try:
+                data = json.loads(body.decode("utf-8"))
+            except ValueError:
+                return None
+            # 条目 JSON 含 url/id
+            web_path = data.get("url") or ""
+            if web_path.startswith("/"):
+                return neodb_base.rstrip("/") + web_path
+            item_id = data.get("id") or ""
+            if item_id.startswith("http"):
+                return item_id
+            # 兜底：若未跟随重定向但状态仍为 200 且为 RedirectedResult
+            api_path = data.get("url") or ""
+            if api_path.startswith("/api/"):
+                return neodb_base.rstrip("/") + api_path[4:]
+            return None
+        if code == 302:
+            try:
+                data = json.loads(body.decode("utf-8"))
+            except ValueError:
+                return None
+            api_path = data.get("url") or ""
+            if api_path.startswith("/api/"):
+                return neodb_base.rstrip("/") + api_path[4:]
+            if api_path.startswith("/"):
+                return neodb_base.rstrip("/") + api_path
+            if api_path.startswith("http"):
+                return api_path
+            return None
+        if code == 202:
+            if attempt >= 1:
+                if verbose:
+                    print("  NeoDB 仍在抓取 {}，本次先保留 Bangumi 链接（后台抓取中，下次同步将重试）".format(bgm_url))
+                return None
+            if verbose:
+                print("  NeoDB 正在抓取 {}，15 秒后重试…".format(bgm_url))
+            remain = deadline - (time.monotonic() - start)
+            wait = 15
+            if remain <= 0:
+                return None
+            time.sleep(min(wait, remain))
+            attempt += 1
+            continue
+        if code == 429:
+            if attempt >= 1:
+                if verbose:
+                    print("  NeoDB 限流（429）{}，本次先保留 Bangumi 链接，下次同步将重试".format(bgm_url))
+                return None
+            if verbose:
+                print("  NeoDB 请求频繁（429），15 秒后重试 {}…".format(bgm_url))
+            remain = deadline - (time.monotonic() - start)
+            if remain <= 0:
+                return None
+            wait = 15
+            time.sleep(min(wait, remain))
+            attempt += 1
+            continue
+        if code in (404, 422):
+            if verbose:
+                print("  NeoDB 暂无条目 {}（HTTP {}），保留 Bangumi 链接".format(bgm_url, code))
+            return None
+        # 其它错误（含 403 Cloudflare 拦截等）视为失败，退回原链接
+        if verbose:
+            try:
+                msg = json.loads(body.decode("utf-8")).get("message") or truncate(body.decode("utf-8", "replace"), 120)
+            except ValueError:
+                msg = truncate(body.decode("utf-8", "replace"), 120)
+            print("  NeoDB 转换失败 {}：HTTP {} {}，保留 Bangumi 链接".format(bgm_url, code, msg))
+        return None
 
 
 def parse_bangumi_time(s):
@@ -511,6 +626,7 @@ def sync(cfg):
     max_ts = 0
     success_max_ts = state["last_updated_ts"]
     has_error = False
+    neodb_cache = {}
     try:
         for c in collections:
             total += 1
@@ -534,7 +650,19 @@ def sync(cfg):
                     success_max_ts = ts
                 continue
             uid = "bgm-{}".format(sid)
-            content = build_content(c, link_base)
+            neodb_url = None
+            if cfg.get("neodb"):
+                neodb_base = cfg.get("neodb_base") or DEFAULT_NEODB_BASE
+                if sid in neodb_cache:
+                    neodb_url = neodb_cache[sid]
+                else:
+                    ua = cfg.get("user_agent") or default_ua()
+                    neodb_url = fetch_neodb_url(sid, neodb_base, timeout, ua, verbose=cfg.get("verbose"))
+                    neodb_cache[sid] = neodb_url
+                    if neodb_url and cfg.get("verbose"):
+                        print("  NeoDB 转换 {} -> {}".format(
+                            "https://bgm.tv/subject/{}".format(sid), neodb_url))
+            content = build_content(c, link_base, neodb_url)
             if cfg.get("dry_run"):
                 if cfg.get("tag") and cfg.get("tag_in_content"):
                     content += "\n#" + cfg.get("tag")

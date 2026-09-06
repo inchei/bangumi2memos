@@ -10,6 +10,8 @@ bangumi_username = ""                 # Bangumi 用户名或 UID（必填，无�
 #                                     # 异常时使用，Termux 等环境一般无需设置，IP 可用 ping 获取）
 # user_agent = "bangumi2memos (https://github.com/inchei/bangumi2memos)"
 # link_base = "https://bgm.tv"        # memo 正文的条目链接域名，如 "https://fxbgm.tv"
+# neodb = false                         # 是否将 Bangumi 链接转为 NeoDB 链接（调用 {neodb_base}/api/catalog/fetch）
+# neodb_base = "https://neodb.social"  # NeoDB 实例地址，需配合 neodb = true 使用
 
 # ---------- Memos 写入 ----------
 # 方式一：API 模式（memos 运行中）
