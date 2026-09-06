@@ -192,7 +192,7 @@ def subject_name(c):
 def build_content(c, link_base, neodb_url=None):
     s = c.get("subject", {})
     link = neodb_url if neodb_url else "{0}/subject/{1}".format(link_base.rstrip("/"), s.get("id"))
-    return "{0}《{1}》：{2}\n\n{3}".format(
+    return "{0}《{1}》：{2}\n\n{3}\n".format(
         status_label(s.get("type", 0)), subject_name(c), c.get("comment", ""),
         link)
 
