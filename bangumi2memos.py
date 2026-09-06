@@ -465,8 +465,41 @@ class APIWriter:
                 break
         return uids
 
+    def list_existing_contents(self):
+        contents = {}
+        page_token = ""
+        while True:
+            query = {"pageSize": "1000"}
+            if self.user:
+                query["filter"] = 'creator == "{0}"'.format(self.user)
+            if page_token:
+                query["pageToken"] = page_token
+            code, body = self._request("GET", "/api/v1/memos", query)
+            if code != 200:
+                raise RuntimeError("memos 列表请求失败（HTTP {0}）：{1}".format(code, truncate(body.decode("utf-8", "replace"), 200)))
+            out = json.loads(body.decode("utf-8"))
+            for m in out.get("memos") or []:
+                name = m.get("name") or ""
+                if name.startswith("memos/"):
+                    contents[name[len("memos/"):]] = m.get("content") or ""
+            page_token = out.get("nextPageToken") or ""
+            if not page_token:
+                break
+        return contents
+
     def list_bangumi_owned(self):
         return sorted(u for u in self.list_existing_uids() if u.startswith("bgm-"))
+
+    def update(self, uid, content, visibility, tag, tag_in_content=True):
+        if tag and tag_in_content:
+            content += "\n#" + tag
+        payload = {"content": content, "visibility": visibility}
+        if tag:
+            payload["tags"] = [tag]
+        code, body = self._request("PATCH", "/api/v1/memos/" + urllib.parse.quote(uid, safe=""), payload)
+        if code in (200, 204):
+            return True
+        raise RuntimeError("更新 memo 失败：HTTP {0}：{1}".format(code, truncate(body.decode("utf-8", "replace"), 200)))
 
     def create(self, uid, content, visibility, create_time, ts, tag, tag_in_content=True):
         if tag and tag_in_content:
@@ -533,11 +566,28 @@ class DBWriter:
         rows = self.conn.execute("SELECT uid FROM memo").fetchall()
         return set(r[0] for r in rows if r[0])
 
+    def list_existing_contents(self):
+        rows = self.conn.execute("SELECT uid, content FROM memo").fetchall()
+        return {r[0]: r[1] or "" for r in rows if r[0]}
+
     def list_bangumi_owned(self):
         rows = self.conn.execute(
             "SELECT uid FROM memo WHERE creator_id = ? AND uid LIKE 'bgm-%' ORDER BY uid",
             (self.user_id,)).fetchall()
         return [r[0] for r in rows]
+
+    def update(self, uid, content, visibility, tag, tag_in_content=True):
+        if tag and tag_in_content:
+            content += "\n#" + tag
+        payload = {}
+        if tag:
+            payload["tags"] = [tag]
+        now = int(time.time())
+        cur = self.conn.execute(
+            "UPDATE memo SET content = ?, visibility = ?, payload = ?, updated_ts = ? WHERE uid = ? AND creator_id = ?",
+            (content, visibility, json.dumps(payload), now, uid, self.user_id))
+        self.conn.commit()
+        return cur.rowcount > 0
 
     def create(self, uid, content, visibility, create_time, ts, tag, tag_in_content=True):
         exists = self.conn.execute("SELECT COUNT(1) FROM memo WHERE uid = ?", (uid,)).fetchone()[0]
@@ -572,11 +622,17 @@ def open_writer(cfg, timeout):
         else:
             raise RuntimeError("API 模式需要 --token，或 --user 与 --password（memos >= 0.30）")
         writer.set_timeout(timeout)
-        existing = writer.list_existing_uids()
+        if cfg.get("neodb"):
+            existing = writer.list_existing_contents()
+        else:
+            existing = writer.list_existing_uids()
         return writer, existing
     writer = DBWriter(cfg["db"], cfg["user"])
     try:
-        existing = writer.list_existing_uids()
+        if cfg.get("neodb"):
+            existing = writer.list_existing_contents()
+        else:
+            existing = writer.list_existing_uids()
     except Exception:
         writer.close()
         raise
@@ -608,9 +664,13 @@ def sync(cfg):
         die(str(e))
 
     state = load_state(cfg.get("state") or "")
-    incremental = (not cfg.get("full")) and state["last_updated_ts"] > 0
+    # 窄修复：--neodb 需全量比对已存在 memo 的链接，否则增量 break 会漏掉旧条目的 202 重试
+    neodb_mode = bool(cfg.get("neodb"))
+    incremental = (not cfg.get("full")) and state["last_updated_ts"] > 0 and not neodb_mode
     if incremental:
         print("增量模式：跳过 updated_at <= {} 的旧条目（--full 强制全量）".format(fmt_ts(state["last_updated_ts"])))
+    elif neodb_mode and not cfg.get("full") and state["last_updated_ts"] > 0:
+        print("全量模式：--neodb 已启用，对已存在 memo 进行链接补齐（忽略增量水印）")
     else:
         print("全量模式：首次运行或无有效状态，扫描全部收藏")
 
@@ -622,7 +682,7 @@ def sync(cfg):
     else:
         close_after = False
 
-    created = skipped = total = 0
+    created = skipped = updated = total = 0
     max_ts = 0
     success_max_ts = state["last_updated_ts"]
     has_error = False
@@ -653,7 +713,20 @@ def sync(cfg):
             neodb_url = None
             if cfg.get("neodb"):
                 neodb_base = cfg.get("neodb_base") or DEFAULT_NEODB_BASE
-                if sid in neodb_cache:
+                # 已是 neodb 链接则跳过请求，避免对已转换的 memo 重复 fetch
+                skip_neodb_fetch = False
+                if uid in existing and isinstance(existing, dict):
+                    old_for_check = existing.get(uid) or ""
+                    nb_host = urllib.parse.urlsplit(neodb_base).hostname or ""
+                    if nb_host and nb_host in old_for_check:
+                        skip_neodb_fetch = True
+                    elif "neodb" in old_for_check.lower():
+                        skip_neodb_fetch = True
+                if skip_neodb_fetch:
+                    neodb_url = None
+                    # 缓存 None 避免同 sid 重复判断
+                    neodb_cache[sid] = None
+                elif sid in neodb_cache:
                     neodb_url = neodb_cache[sid]
                 else:
                     ua = cfg.get("user_agent") or default_ua()
@@ -672,6 +745,29 @@ def sync(cfg):
                     success_max_ts = ts
                 continue
             if uid in existing:
+                # 窄修复：--neodb 下若已存在 memo 仍为 bgm 链接且本次已抓到 neodb 链接，则原地更新
+                if cfg.get("neodb") and neodb_url and isinstance(existing, dict):
+                    old_content = existing.get(uid) or ""
+                    tag = cfg.get("tag") or ""
+                    tag_in_content = cfg.get("tag_in_content", True)
+                    expected = content + ("\n#" + tag if tag and tag_in_content else "")
+                    if old_content != expected and neodb_url not in old_content:
+                        # 仅当旧内容含 bgm 链接而新内容为 neodb 时才更新，避免覆写用户手动编辑
+                        if "bgm.tv" in old_content or "/subject/{}".format(sid) in old_content:
+                            try:
+                                writer.update(uid, content, visibility_value(cfg.get("visibility")), tag, tag_in_content)
+                            except Exception as e:
+                                print("  更新 {} 失败：{}".format(uid, e))
+                                has_error = True
+                                if ts > success_max_ts:
+                                    success_max_ts = ts
+                                continue
+                            if cfg.get("verbose"):
+                                print("  已更新 {}：{}《{}》 bgm -> neodb".format(uid, status_label((c.get("subject") or {}).get("type", 0)), subject_name(c)))
+                            updated += 1
+                            if ts > success_max_ts:
+                                success_max_ts = ts
+                            continue
                 skipped += 1
                 if ts > success_max_ts:
                     success_max_ts = ts
@@ -706,7 +802,10 @@ def sync(cfg):
         print("本次同步存在 memos 写入失败，未更新增量状态文件（下次将重试）")
 
     action = "dry-run 待创建" if cfg.get("dry_run") else "创建"
-    print("\n完成：扫描 {} 条收藏，{} {} 条，跳过 {} 条".format(total, action, created, skipped))
+    if updated:
+        print("\n完成：扫描 {} 条收藏，{} {} 条，更新 {} 条，跳过 {} 条".format(total, action, created, updated, skipped))
+    else:
+        print("\n完成：扫描 {} 条收藏，{} {} 条，跳过 {} 条".format(total, action, created, skipped))
     return 0
 
 
